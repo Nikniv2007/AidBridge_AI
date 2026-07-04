@@ -6,138 +6,147 @@ import { Select } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { UrgencyBadge } from "@/components/ai/badges";
-import { matchResources } from "@/lib/matching";
-import { getResource } from "@/lib/data/mock";
-import { CATEGORY_LABELS } from "@/lib/utils/format";
-import type { Case, Resource } from "@/lib/types";
-import { AlertTriangle, Combine, MapPin, Truck } from "lucide-react";
+import { EmptyState, Skeleton } from "@/components/ui/misc";
+import type { ResourceMatchResult } from "@/lib/ai/schemas/resource-match.schema";
+import type { AiRunMeta } from "@/lib/ai/schemas/common";
+import { humanize } from "@/lib/utils/format";
+import { AlertTriangle, Combine } from "lucide-react";
 
-export function MatchingClient({
-  cases,
-  resources,
-}: {
-  cases: Case[];
-  resources: Resource[];
-}) {
+interface CaseOption {
+  id: string;
+  requester_name: string;
+  original_request: string;
+  case_type: string;
+  urgency_level: string;
+  urgency_score: number;
+}
+
+export function MatchingClient({ cases }: { cases: CaseOption[] }) {
   const [caseId, setCaseId] = React.useState(cases[0]?.id ?? "");
+  const [loading, setLoading] = React.useState(false);
+  const [result, setResult] = React.useState<{ result: ResourceMatchResult; meta: AiRunMeta } | null>(null);
   const selected = cases.find((c) => c.id === caseId);
-  const matches = React.useMemo(
-    () => (selected ? matchResources(selected, resources).slice(0, 5) : []),
-    [selected, resources],
-  );
+
+  async function run() {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/ai/match", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ case_id: caseId }),
+      });
+      setResult(await res.json());
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  React.useEffect(() => {
+    setResult(null);
+  }, [caseId]);
+
+  const r = result?.result;
 
   return (
     <div className="grid gap-6 lg:grid-cols-3">
-      <div className="lg:col-span-1">
-        <Card>
-          <CardHeader>
-            <CardTitle>Select a case</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Select value={caseId} onChange={(e) => setCaseId(e.target.value)}>
-              {cases.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.id} — {c.intake.requesterName}
-                </option>
-              ))}
-            </Select>
-            {selected?.triage && (
-              <div className="space-y-3 rounded-lg bg-muted/40 p-4 text-sm">
-                <p className="italic text-muted-foreground">
-                  “{selected.intake.description}”
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <Badge tone="brand">{CATEGORY_LABELS[selected.triage.category]}</Badge>
-                  <UrgencyBadge urgency={selected.triage.urgency} score={selected.triage.urgencyScore} />
-                </div>
-                <div>
-                  <p className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
-                    Needed resources
-                  </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {selected.triage.neededResources.map((r) => (
-                      <Badge key={r} tone="info">{r.replace(/_/g, " ")}</Badge>
-                    ))}
-                  </div>
-                </div>
+      <Card className="lg:col-span-1">
+        <CardHeader>
+          <CardTitle>Select a case</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Select value={caseId} onChange={(e) => setCaseId(e.target.value)}>
+            {cases.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.id} — {c.requester_name}
+              </option>
+            ))}
+          </Select>
+          {selected && (
+            <div className="space-y-2 rounded-lg bg-muted/40 p-4 text-sm">
+              <p className="italic text-muted-foreground">“{selected.original_request}”</p>
+              <div className="flex flex-wrap gap-2">
+                <Badge tone="brand">{humanize(selected.case_type)}</Badge>
+                <Badge tone="info" className="capitalize">
+                  {selected.urgency_level} · {selected.urgency_score}
+                </Badge>
               </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+            </div>
+          )}
+          <Button onClick={run} disabled={loading} className="w-full">
+            <Combine className="h-4 w-4" />
+            {loading ? "Matching…" : "Run resource match"}
+          </Button>
+        </CardContent>
+      </Card>
 
       <div className="space-y-4 lg:col-span-2">
-        <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-          <Combine className="h-4 w-4" /> Ranked matches
-        </div>
-        {matches.map((m, i) => {
-          const r = getResource(m.resourceId);
-          if (!r) return null;
-          return (
-            <Card key={m.resourceId} className={i === 0 ? "border-brand-300 dark:border-brand-800" : ""}>
-              <CardContent className="p-5">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="font-semibold">{r.name}</p>
-                      {i === 0 && <Badge tone="brand">Top match</Badge>}
-                    </div>
-                    <p className="mt-0.5 flex items-center gap-3 text-xs text-muted-foreground">
-                      <span className="inline-flex items-center gap-1">
-                        <MapPin className="h-3 w-3" /> ~{m.distanceMiApprox} mi
-                      </span>
-                      {r.deliveryAvailable && (
-                        <span className="inline-flex items-center gap-1 text-emerald-600">
-                          <Truck className="h-3 w-3" /> Delivery
-                        </span>
-                      )}
-                      <span>{r.quantityAvailable} available</span>
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-2xl font-semibold tabular-nums">{m.score}</p>
-                    <p className="text-xs text-muted-foreground">match score</p>
-                  </div>
-                </div>
-
-                <Progress
-                  value={m.score}
-                  className="mt-3"
-                  indicatorClassName={m.score >= 70 ? "bg-emerald-500" : m.score >= 45 ? "bg-amber-500" : "bg-red-500"}
-                />
-
-                <div className="mt-3">
-                  <p className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
-                    Why this match
-                  </p>
-                  <ul className="flex flex-wrap gap-1.5">
-                    {m.reasons.map((reason, idx) => (
-                      <li key={idx}>
-                        <Badge tone="neutral">{reason}</Badge>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    {m.humanReviewRecommended && (
-                      <span className="inline-flex items-center gap-1 text-xs text-amber-600">
-                        <AlertTriangle className="h-3.5 w-3.5" /> Human review recommended
-                        {m.eligibilityFit === "unknown" && " (verify eligibility)"}
-                      </span>
-                    )}
-                  </div>
-                  <Button size="sm" variant={i === 0 ? "primary" : "outline"}>
-                    {i === 0 ? "Confirm match" : "Use as backup"}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
+        {loading ? (
+          <Card>
+            <CardContent className="space-y-3 p-6">
+              <Skeleton className="h-6 w-1/2" />
+              <Skeleton className="h-24 w-full" />
+            </CardContent>
+          </Card>
+        ) : r ? (
+          <>
+            {r.recommended_match ? (
+              <MatchCard entry={r.recommended_match} top humanReview={r.human_review_required} />
+            ) : (
+              <Card className="border-amber-200 dark:border-amber-900">
+                <CardContent className="flex items-center gap-2 p-5 text-sm text-amber-700 dark:text-amber-300">
+                  <AlertTriangle className="h-5 w-5" />
+                  No viable resource found. Routed to human review.
+                  {r.unmet_needs.length > 0 && ` Unmet: ${r.unmet_needs.join(", ")}.`}
+                </CardContent>
+              </Card>
+            )}
+            {r.backup_matches.map((b) => (
+              <MatchCard key={b.resource_id} entry={b} />
+            ))}
+            <p className="text-xs text-muted-foreground">
+              {result?.meta.demo_mode ? "Demo AI" : "Live"} · confidence {(r.confidence_score * 100).toFixed(0)}% · {result?.meta.prompt_version}
+            </p>
+          </>
+        ) : (
+          <EmptyState icon={<Combine className="h-8 w-8" />} title="Ranked matches appear here" description="Select a case and run the matcher to see the top recommendation and backups with scores and reasons." />
+        )}
       </div>
     </div>
+  );
+}
+
+function MatchCard({
+  entry,
+  top,
+  humanReview,
+}: {
+  entry: { resource_id: string; name: string; match_score: number; reason_summary: string };
+  top?: boolean;
+  humanReview?: boolean;
+}) {
+  return (
+    <Card className={top ? "border-brand-300 dark:border-brand-800" : ""}>
+      <CardContent className="p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <p className="font-semibold">{entry.name}</p>
+              {top && <Badge tone="brand">Top match</Badge>}
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">{entry.reason_summary}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-2xl font-semibold tabular-nums">{entry.match_score}</p>
+            <p className="text-xs text-muted-foreground">match score</p>
+          </div>
+        </div>
+        <Progress value={entry.match_score} className="mt-3" indicatorClassName={entry.match_score >= 70 ? "bg-emerald-500" : entry.match_score >= 45 ? "bg-amber-500" : "bg-red-500"} />
+        {top && humanReview && (
+          <p className="mt-3 inline-flex items-center gap-1 text-xs text-amber-600">
+            <AlertTriangle className="h-3.5 w-3.5" /> Human review recommended (verify eligibility/availability).
+          </p>
+        )}
+      </CardContent>
+    </Card>
   );
 }

@@ -1,17 +1,23 @@
 import { SectionHeading } from "@/components/ui/misc";
 import { MatchingClient } from "./matching-client";
-import { cases, resources } from "@/lib/data/mock";
+import { cases } from "@/lib/data/db";
 
 export default function MatchingPage() {
-  // Only show cases that have been triaged (matching depends on category).
-  const triaged = cases.filter((c) => c.triage);
+  const options = cases.slice(0, 40).map((c) => ({
+    id: c.id,
+    requester_name: c.requester_name,
+    original_request: c.original_request,
+    case_type: c.case_type,
+    urgency_level: c.urgency_level,
+    urgency_score: c.urgency_score,
+  }));
   return (
     <>
       <SectionHeading
         title="Resource Matching"
-        description="Explainable resource recommendations combining type fit, distance, availability, delivery, eligibility, and urgency."
+        description="Deterministic 7-factor scoring (type, availability, delivery, distance, eligibility, urgency, quantity) plus a short AI explanation. The AI can only reference resources in context."
       />
-      <MatchingClient cases={triaged} resources={resources} />
+      <MatchingClient cases={options} />
     </>
   );
 }

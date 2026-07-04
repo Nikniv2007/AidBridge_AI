@@ -1,28 +1,18 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { runReport } from "@/lib/ai/provider";
-import { commandCenterStats } from "@/lib/data/metrics";
-import type { ReportType } from "@/lib/types";
+import { writeReport } from "@/lib/ai/reportWriter";
+import { operationalStats } from "@/lib/data/dbMetrics";
+import { organization } from "@/lib/data/db";
 
 export const runtime = "nodejs";
 
-const REPORT_TITLES: Record<ReportType, string> = {
-  daily_ops: "Daily Operations Report",
-  weekly_impact: "Weekly Impact Report",
-  resource_shortage: "Resource Shortage Report",
-  volunteer_performance: "Volunteer Performance Report",
-  cases_by_category: "Cases by Category Report",
-  donor_summary: "Donor-Friendly Impact Summary",
-};
-
 const bodySchema = z.object({
   type: z.enum([
-    "daily_ops",
-    "weekly_impact",
+    "operations",
+    "impact_summary",
+    "donor_report",
+    "leadership_brief",
     "resource_shortage",
-    "volunteer_performance",
-    "cases_by_category",
-    "donor_summary",
   ]),
 });
 
@@ -38,12 +28,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid report type." }, { status: 422 });
   }
 
-  const stats = commandCenterStats();
-  const report = await runReport(
-    parsed.data.type,
-    REPORT_TITLES[parsed.data.type],
-    "Today",
-    stats as unknown as Record<string, unknown>,
-  );
-  return NextResponse.json(report);
+  const stats = operationalStats();
+  const { data, meta } = await writeReport({
+    reportType: parsed.data.type,
+    periodLabel: "Today",
+    orgName: organization.name,
+    stats,
+  });
+
+  return NextResponse.json({ report: data, meta });
 }

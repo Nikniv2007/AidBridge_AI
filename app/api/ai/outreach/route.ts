@@ -1,31 +1,16 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { runOutreach } from "@/lib/ai/provider";
+import { generateOutreach } from "@/lib/ai/outreachGenerator";
 
 export const runtime = "nodejs";
 
 const bodySchema = z.object({
-  audience: z.enum([
-    "requester",
-    "volunteer",
-    "donor",
-    "partner",
-    "leadership",
-    "community_group",
-  ]),
-  format: z.enum([
-    "sms",
-    "email",
-    "whatsapp",
-    "announcement",
-    "volunteer_instructions",
-    "donor_update",
-    "partner_request",
-  ]),
+  audience: z.enum(["requester", "volunteer", "donor", "partner", "leadership", "community_group"]),
+  channel: z.enum(["sms", "email", "whatsapp", "announcement"]),
   tone: z.enum(["warm", "professional", "urgent", "concise", "community", "formal"]),
-  language: z.enum(["en", "es", "hi", "ur"]),
-  caseId: z.string().optional(),
+  language: z.enum(["English", "Spanish", "Hindi", "Urdu"]),
   context: z.string().default(""),
+  recipientFirstName: z.string().optional(),
 });
 
 export async function POST(req: Request) {
@@ -35,7 +20,6 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
   }
-
   const parsed = bodySchema.safeParse(json);
   if (!parsed.success) {
     return NextResponse.json(
@@ -44,6 +28,6 @@ export async function POST(req: Request) {
     );
   }
 
-  const out = await runOutreach(parsed.data);
-  return NextResponse.json(out);
+  const { data, meta } = await generateOutreach(parsed.data);
+  return NextResponse.json({ ...data, meta });
 }

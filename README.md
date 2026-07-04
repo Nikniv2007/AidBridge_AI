@@ -90,14 +90,36 @@ invalid JSON, AidBridge **automatically falls back to demo mode** and records th
 
 ---
 
+## 🧠 AI layer (Part 2)
+
+Eight structured, schema-validated AI tasks — **intake classifier, urgency
+scorer, safety review, resource matcher, volunteer assignment, outreach
+generator, report writer, and output reviewer** — built on:
+
+- **Vendor-neutral provider** (`lib/ai/providers/`): demo (default, no keys) or a
+  configurable live endpoint (`LLM_API_URL` / `LLM_API_KEY` / `LLM_MODEL`). No
+  third-party AI vendor is named or assumed. Live failures fall back to demo.
+- **Zod schemas** (`lib/ai/schemas/`): every output is validated before it's
+  trusted; malformed output is logged, surfaced to the eval lab, and replaced by
+  a safe fallback — never silently accepted.
+- **Versioned prompts + few-shot** (`lib/ai/prompts/`): JSON-only contracts,
+  baked-in safety rules, confidence scores, and brief reason summaries (no
+  chain-of-thought exposure).
+- **Layered context builders** (`lib/ai/context-builders/`): system safety rules
+  → org rules → user role → case → resources/volunteers → notes → schema.
+- **Deterministic cores**: explainable matching point systems (`lib/matching/`),
+  urgency scoring, and a rule-based safety engine (`lib/safety/`).
+
+See [docs/AI_LAYER.md](docs/AI_LAYER.md) for the full design.
+
 ## 🧱 Tech stack
 
 - **Frontend:** Next.js 14 (App Router), React 18, TypeScript, Tailwind CSS, shadcn-style components, lucide-react icons, dependency-free SVG charts
 - **Backend:** Next.js API routes / server components, Zod validation
-- **Data:** Supabase-ready PostgreSQL schema with Row-Level-Security scaffolding (runs on an in-memory mock store out of the box)
-- **AI layer:** Provider dispatcher (configurable live LLM endpoint / deterministic demo), versioned system prompts, few-shot prompting, schema-enforced structured output
-- **Automation:** Python (stdlib-only) scripts for CSV/roster/inventory parsing, duplicate detection, report generation, JSON validation, seeding
-- **Testing:** Vitest — unit tests, schema-validation tests, safety-rule tests, and AI eval / prompt-regression tests
+- **Data:** Supabase-ready PostgreSQL schema + migrations with Row-Level-Security (runs on a rich in-memory demo store out of the box — 1 org, 5 users, 100 cases, 30 volunteers, 35 resources, plus events, AI outputs, evals, automations, reports; all fictional)
+- **AI layer:** 8 structured tasks, vendor-neutral provider dispatcher (configurable live endpoint / deterministic demo), versioned prompts, few-shot prompting, schema-enforced structured output, AI output logging + evals
+- **Automation:** Python (stdlib-only) scripts for intake/roster/inventory parsing, duplicate detection, daily report generation, AI-output validation, seeding
+- **Testing:** Vitest — unit tests, schema-validation tests, safety-rule tests, deterministic-scoring tests, and AI eval / prompt-regression tests (35 passing)
 
 ---
 

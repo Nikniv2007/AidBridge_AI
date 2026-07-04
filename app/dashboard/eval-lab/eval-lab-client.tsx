@@ -9,17 +9,17 @@ import { JsonViewer } from "@/components/ai/json-viewer";
 import { Progress } from "@/components/ui/progress";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { humanize } from "@/lib/utils/format";
-import type { EvalCase, EvalResult } from "@/lib/types";
+import type { EvalCaseDef, EvalRunResult } from "@/lib/ai/schemas/eval.schema";
 import { FlaskConical, Play, CheckCircle2, XCircle } from "lucide-react";
 
 interface SuiteOutcome {
-  results: EvalResult[];
+  results: EvalRunResult[];
   passed: number;
   failed: number;
   passRate: number;
 }
 
-export function EvalLabClient({ evals }: { evals: EvalCase[] }) {
+export function EvalLabClient({ evals }: { evals: EvalCaseDef[] }) {
   const [loading, setLoading] = React.useState(false);
   const [outcome, setOutcome] = React.useState<SuiteOutcome | null>(null);
   const [expanded, setExpanded] = React.useState<string | null>(null);
@@ -34,13 +34,14 @@ export function EvalLabClient({ evals }: { evals: EvalCase[] }) {
     }
   }
 
+  const rows: (EvalRunResult | EvalCaseDef)[] = outcome?.results ?? evals;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <FlaskConical className="h-4 w-4" />
-          {evals.length} eval cases across{" "}
-          {new Set(evals.map((e) => e.category)).size} categories
+          {evals.length} eval cases across {new Set(evals.map((e) => e.category)).size} categories
         </div>
         <Button onClick={run} disabled={loading}>
           <Play className="h-4 w-4" />
@@ -57,37 +58,33 @@ export function EvalLabClient({ evals }: { evals: EvalCase[] }) {
       )}
 
       <div className="space-y-3">
-        {(outcome?.results ?? evals.map(toPending)).map((r) => {
+        {rows.map((row, idx) => {
           const isResult = !!outcome;
-          const result = r as EvalResult;
-          const open = expanded === result.evalId;
+          const r = row as EvalRunResult;
+          const def = row as EvalCaseDef;
+          const key = isResult ? r.eval_name : def.eval_name;
+          const input = String((isResult ? r.input_payload : def.input_payload).text ?? "");
+          const open = expanded === key;
           return (
-            <Card key={result.evalId}>
+            <Card key={`${key}-${idx}`}>
               <CardContent className="p-4">
                 <button
                   className="flex w-full items-start justify-between gap-3 text-left"
-                  onClick={() => setExpanded(open ? null : result.evalId)}
+                  onClick={() => setExpanded(open ? null : key)}
                 >
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-medium">{result.name}</span>
-                      <Badge tone="neutral">{humanize(result.category)}</Badge>
-                      {isResult && <ValidationChip pass={result.pass} />}
+                      <span className="font-medium">{key}</span>
+                      <Badge tone="neutral">{humanize((isResult ? r.category : def.category) as string)}</Badge>
+                      <Badge tone="info">{humanize((isResult ? r.ai_task_type : def.ai_task_type) as string)}</Badge>
+                      {isResult && <ValidationChip pass={r.passed} />}
                     </div>
-                    <p className="mt-1 line-clamp-1 text-sm text-muted-foreground">
-                      “{result.input}”
-                    </p>
+                    <p className="mt-1 line-clamp-1 text-sm text-muted-foreground">“{input}”</p>
                   </div>
                   {isResult && (
                     <div className="flex items-center gap-2">
-                      <Progress
-                        value={result.score * 100}
-                        className="w-16"
-                        indicatorClassName={result.pass ? "bg-emerald-500" : "bg-red-500"}
-                      />
-                      <span className="text-xs tabular-nums text-muted-foreground">
-                        {(result.score * 100).toFixed(0)}
-                      </span>
+                      <Progress value={r.score * 100} className="w-16" indicatorClassName={r.passed ? "bg-emerald-500" : "bg-red-500"} />
+                      <span className="text-xs tabular-nums text-muted-foreground">{(r.score * 100).toFixed(0)}</span>
                     </div>
                   )}
                 </button>
@@ -96,21 +93,18 @@ export function EvalLabClient({ evals }: { evals: EvalCase[] }) {
                   <div className="mt-4 grid gap-4 lg:grid-cols-2">
                     <div>
                       <p className="mb-1 text-xs font-semibold uppercase text-muted-foreground">Expected</p>
-                      <JsonViewer data={result.expected} maxHeight="12rem" />
+                      <JsonViewer data={r.expected_payload} maxHeight="12rem" />
                     </div>
                     <div>
                       <p className="mb-1 text-xs font-semibold uppercase text-muted-foreground">Actual</p>
-                      <JsonViewer data={result.actual} maxHeight="12rem" />
+                      <JsonViewer data={r.actual_payload} maxHeight="12rem" />
                     </div>
-                    {result.failureReason && (
+                    {r.failure_reason && (
                       <div className="lg:col-span-2 rounded-md bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
                         <span className="font-semibold">Failure: </span>
-                        {result.failureReason}
+                        {r.failure_reason}
                       </div>
                     )}
-                    <p className="lg:col-span-2 text-xs text-muted-foreground">
-                      Ran {result.timestamp}
-                    </p>
                   </div>
                 )}
               </CardContent>
@@ -120,20 +114,4 @@ export function EvalLabClient({ evals }: { evals: EvalCase[] }) {
       </div>
     </div>
   );
-}
-
-function toPending(e: EvalCase): EvalResult {
-  return {
-    id: `${e.id}-pending`,
-    evalId: e.id,
-    category: e.category,
-    name: e.name,
-    input: e.input,
-    expected: e.expected,
-    actual: {},
-    pass: false,
-    score: 0,
-    failureReason: null,
-    timestamp: "",
-  };
 }

@@ -6,21 +6,21 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState, Skeleton } from "@/components/ui/misc";
 import { renderMarkdown } from "@/lib/utils/markdown";
-import type { Report, ReportType } from "@/lib/types";
+import type { ReportResult, ReportType } from "@/lib/ai/schemas/report.schema";
+import type { AiRunMeta } from "@/lib/ai/schemas/common";
 import { FileBarChart, Sparkles } from "lucide-react";
 
 const REPORTS: { type: ReportType; title: string; desc: string }[] = [
-  { type: "daily_ops", title: "Daily operations", desc: "Today's case flow, review queue, and shortages." },
-  { type: "weekly_impact", title: "Weekly impact", desc: "People helped, completions, and trends." },
+  { type: "operations", title: "Daily operations", desc: "Case flow, review queue, and shortages." },
+  { type: "impact_summary", title: "Weekly impact", desc: "People helped, completions, and trends." },
   { type: "resource_shortage", title: "Resource shortage", desc: "Which resources are low or out of stock." },
-  { type: "volunteer_performance", title: "Volunteer performance", desc: "Workload, reliability, and completions." },
-  { type: "cases_by_category", title: "Cases by category", desc: "Breakdown of demand by need type." },
-  { type: "donor_summary", title: "Donor-friendly summary", desc: "Warm, shareable impact narrative." },
+  { type: "leadership_brief", title: "Leadership brief", desc: "Concise status for leadership." },
+  { type: "donor_report", title: "Donor-friendly summary", desc: "Warm, shareable impact narrative." },
 ];
 
 export function ReportsClient() {
   const [loading, setLoading] = React.useState<ReportType | null>(null);
-  const [report, setReport] = React.useState<Report | null>(null);
+  const [report, setReport] = React.useState<(ReportResult & { meta: AiRunMeta }) | null>(null);
 
   async function generate(type: ReportType) {
     setLoading(type);
@@ -30,7 +30,8 @@ export function ReportsClient() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ type }),
       });
-      setReport((await res.json()) as Report);
+      const data = await res.json();
+      setReport({ ...data.report, meta: data.meta });
     } finally {
       setLoading(null);
     }
@@ -46,12 +47,7 @@ export function ReportsClient() {
                 <p className="font-medium">{r.title}</p>
                 <p className="text-xs text-muted-foreground">{r.desc}</p>
               </div>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={loading === r.type}
-                onClick={() => generate(r.type)}
-              >
+              <Button size="sm" variant="outline" disabled={loading === r.type} onClick={() => generate(r.type)}>
                 {loading === r.type ? "…" : "Generate"}
               </Button>
             </CardContent>
@@ -73,11 +69,9 @@ export function ReportsClient() {
               <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
                 <Badge tone="brand">
                   <Sparkles className="h-3 w-3" />
-                  {report.meta.demoMode ? "Demo AI" : report.meta.provider}
+                  {report.meta.demo_mode ? "Demo AI" : "Live"}
                 </Badge>
-                <span className="text-xs text-muted-foreground">
-                  {report.periodLabel} · {report.meta.promptVersion}
-                </span>
+                <span className="text-xs text-muted-foreground">{report.meta.prompt_version}</span>
               </div>
               {report.highlights.length > 0 && (
                 <div className="mb-4 grid gap-2 sm:grid-cols-3">
@@ -90,7 +84,7 @@ export function ReportsClient() {
               )}
               <div
                 className="prose-report"
-                dangerouslySetInnerHTML={{ __html: renderMarkdown(report.markdown) }}
+                dangerouslySetInnerHTML={{ __html: renderMarkdown(report.content) }}
               />
             </CardContent>
           </Card>
@@ -98,7 +92,7 @@ export function ReportsClient() {
           <EmptyState
             icon={<FileBarChart className="h-8 w-8" />}
             title="Generate a report"
-            description="Pick a report on the left. Output is grounded strictly in your current operational data."
+            description="Pick a report on the left. Output is grounded strictly in your current operational data and validated before display."
           />
         )}
       </div>

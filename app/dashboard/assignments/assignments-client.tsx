@@ -6,25 +6,44 @@ import { Select } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { UrgencyBadge } from "@/components/ai/badges";
-import { matchVolunteers } from "@/lib/matching";
-import { getVolunteer } from "@/lib/data/mock";
-import type { Case, Volunteer } from "@/lib/types";
-import { CheckCircle2, MapPin, ThumbsUp, TriangleAlert, UserPlus } from "lucide-react";
+import { EmptyState, Skeleton } from "@/components/ui/misc";
+import type { VolunteerAssignmentResult } from "@/lib/ai/schemas/volunteer-assignment.schema";
+import type { AiRunMeta } from "@/lib/ai/schemas/common";
+import { humanize } from "@/lib/utils/format";
+import { AlertTriangle, CheckCircle2, UserPlus } from "lucide-react";
 
-export function AssignmentsClient({
-  cases,
-  volunteers,
-}: {
-  cases: Case[];
-  volunteers: Volunteer[];
-}) {
+interface CaseOption {
+  id: string;
+  requester_name: string;
+  original_request: string;
+  case_type: string;
+  urgency_level: string;
+  preferred_language: string;
+  city: string;
+}
+
+export function AssignmentsClient({ cases }: { cases: CaseOption[] }) {
   const [caseId, setCaseId] = React.useState(cases[0]?.id ?? "");
+  const [loading, setLoading] = React.useState(false);
+  const [result, setResult] = React.useState<{ result: VolunteerAssignmentResult; meta: AiRunMeta } | null>(null);
   const selected = cases.find((c) => c.id === caseId);
-  const matches = React.useMemo(
-    () => (selected ? matchVolunteers(selected, volunteers).slice(0, 4) : []),
-    [selected, volunteers],
-  );
+
+  async function run() {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/ai/assign", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ case_id: caseId }),
+      });
+      setResult(await res.json());
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  React.useEffect(() => setResult(null), [caseId]);
+  const r = result?.result;
 
   return (
     <div className="grid gap-6 lg:grid-cols-3">
@@ -36,90 +55,100 @@ export function AssignmentsClient({
           <Select value={caseId} onChange={(e) => setCaseId(e.target.value)}>
             {cases.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.id} — {c.intake.requesterName}
+                {c.id} — {c.requester_name}
               </option>
             ))}
           </Select>
-          {selected?.triage && (
+          {selected && (
             <div className="space-y-2 rounded-lg bg-muted/40 p-4 text-sm">
-              <p className="italic text-muted-foreground">“{selected.intake.description}”</p>
-              <div className="flex flex-wrap items-center gap-2">
-                <UrgencyBadge urgency={selected.triage.urgency} score={selected.triage.urgencyScore} />
-                <Badge tone="info">{selected.intake.preferredLanguage.toUpperCase()}</Badge>
-                <Badge tone="neutral">{selected.intake.city}</Badge>
+              <p className="italic text-muted-foreground">“{selected.original_request}”</p>
+              <div className="flex flex-wrap gap-2">
+                <Badge tone="brand">{humanize(selected.case_type)}</Badge>
+                <Badge tone="info">{selected.preferred_language}</Badge>
+                <Badge tone="neutral">{selected.city}</Badge>
               </div>
             </div>
           )}
+          <Button onClick={run} disabled={loading} className="w-full">
+            <UserPlus className="h-4 w-4" />
+            {loading ? "Scoring…" : "Recommend volunteers"}
+          </Button>
         </CardContent>
       </Card>
 
       <div className="space-y-4 lg:col-span-2">
-        <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-          <UserPlus className="h-4 w-4" /> Recommended volunteers
-        </div>
-        {matches.map((m, i) => {
-          const v = getVolunteer(m.volunteerId);
-          if (!v) return null;
-          return (
-            <Card key={m.volunteerId} className={i === 0 ? "border-brand-300 dark:border-brand-800" : ""}>
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <p className="font-semibold">{v.name}</p>
-                      {i === 0 && <Badge tone="brand">Recommended</Badge>}
-                    </div>
-                    <p className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-                      <MapPin className="h-3 w-3" /> {v.city}, {v.state} · {v.completedTasks} completed · {v.activeAssignments}/{v.maxTasksPerDay} today
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-2xl font-semibold tabular-nums">{m.score}</p>
-                    <p className="text-xs text-muted-foreground">fit score</p>
-                  </div>
-                </div>
-
-                <Progress
-                  value={m.score}
-                  className="mt-3"
-                  indicatorClassName={m.score >= 70 ? "bg-emerald-500" : m.score >= 45 ? "bg-amber-500" : "bg-red-500"}
-                />
-
-                <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                  <div>
-                    <p className="mb-1 flex items-center gap-1 text-xs font-semibold uppercase text-emerald-600">
-                      <ThumbsUp className="h-3 w-3" /> Strengths
-                    </p>
-                    <ul className="space-y-1 text-xs text-muted-foreground">
-                      {m.reasons.map((r, idx) => (
-                        <li key={idx}>• {r}</li>
-                      ))}
-                    </ul>
-                  </div>
-                  {m.concerns.length > 0 && (
-                    <div>
-                      <p className="mb-1 flex items-center gap-1 text-xs font-semibold uppercase text-amber-600">
-                        <TriangleAlert className="h-3 w-3" /> Concerns
-                      </p>
-                      <ul className="space-y-1 text-xs text-muted-foreground">
-                        {m.concerns.map((r, idx) => (
-                          <li key={idx}>• {r}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-
-                <div className="mt-4 flex justify-end">
-                  <Button size="sm" variant={i === 0 ? "primary" : "outline"}>
-                    <CheckCircle2 className="h-4 w-4" /> Assign {v.name.split(" ")[0]}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
+        {loading ? (
+          <Card>
+            <CardContent className="space-y-3 p-6">
+              <Skeleton className="h-6 w-1/2" />
+              <Skeleton className="h-24 w-full" />
+            </CardContent>
+          </Card>
+        ) : r ? (
+          <>
+            {r.human_review_required && (
+              <Card className="border-amber-200 dark:border-amber-900">
+                <CardContent className="flex items-center gap-2 p-4 text-sm text-amber-700 dark:text-amber-300">
+                  <AlertTriangle className="h-5 w-5" />
+                  {r.recommended_volunteer
+                    ? "Human review recommended before assigning."
+                    : "Safety-critical case — not auto-assigned. Coordinator must assign manually."}
+                  {r.risk_flags.length > 0 && ` Flags: ${r.risk_flags.map(humanize).join(", ")}.`}
+                </CardContent>
+              </Card>
+            )}
+            {r.recommended_volunteer && (
+              <VolunteerCard entry={r.recommended_volunteer} top />
+            )}
+            {r.backup_volunteers.map((b) => (
+              <VolunteerCard key={b.volunteer_id} entry={b} />
+            ))}
+            <p className="text-xs text-muted-foreground">
+              {result?.meta.demo_mode ? "Demo AI" : "Live"} · confidence {(r.confidence_score * 100).toFixed(0)}% · {result?.meta.prompt_version}
+            </p>
+          </>
+        ) : (
+          <EmptyState icon={<UserPlus className="h-8 w-8" />} title="Recommended volunteers appear here" description="Select a case and run scoring to see the best-fit volunteer and backups, with a fit score and reason." />
+        )}
       </div>
     </div>
+  );
+}
+
+function VolunteerCard({
+  entry,
+  top,
+}: {
+  entry: { volunteer_id: string; name: string; assignment_score: number; reason_summary?: string };
+  top?: boolean;
+}) {
+  return (
+    <Card className={top ? "border-brand-300 dark:border-brand-800" : ""}>
+      <CardContent className="p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <p className="font-semibold">{entry.name}</p>
+              {top && <Badge tone="brand">Recommended</Badge>}
+            </div>
+            {entry.reason_summary && (
+              <p className="mt-1 text-sm text-muted-foreground">{entry.reason_summary}</p>
+            )}
+          </div>
+          <div className="text-right">
+            <p className="text-2xl font-semibold tabular-nums">{entry.assignment_score}</p>
+            <p className="text-xs text-muted-foreground">fit score</p>
+          </div>
+        </div>
+        <Progress value={entry.assignment_score} className="mt-3" indicatorClassName={entry.assignment_score >= 70 ? "bg-emerald-500" : entry.assignment_score >= 45 ? "bg-amber-500" : "bg-red-500"} />
+        {top && (
+          <div className="mt-3 flex justify-end">
+            <Button size="sm">
+              <CheckCircle2 className="h-4 w-4" /> Assign {entry.name.split(" ")[0]}
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

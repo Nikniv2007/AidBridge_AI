@@ -4,15 +4,22 @@ import * as React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Select, Textarea } from "@/components/ui/input";
-import { AiOutputPanel } from "@/components/ai/ai-output-panel";
+import { IntakePanel } from "@/components/ai/intake-panel";
 import { EmptyState, Skeleton } from "@/components/ui/misc";
-import { StatusBadge } from "@/components/ai/badges";
-import { LANGUAGES, type Case } from "@/lib/types";
-import { CheckCircle2, Inbox, Send } from "lucide-react";
+import { LANGUAGES } from "@/lib/types";
+import type { IntakeClassification } from "@/lib/ai/schemas/intake.schema";
+import type { AiRunMeta } from "@/lib/ai/schemas/common";
+import { Inbox, Send } from "lucide-react";
+
+interface IntakeResponse {
+  classification: IntakeClassification;
+  meta: AiRunMeta;
+  validation: { passed: boolean; error: string | null; usedFallback: boolean };
+}
 
 export function IntakeForm() {
   const [loading, setLoading] = React.useState(false);
-  const [result, setResult] = React.useState<Case | null>(null);
+  const [result, setResult] = React.useState<IntakeResponse | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -21,27 +28,28 @@ export function IntakeForm() {
     setError(null);
     const form = new FormData(e.currentTarget);
     const payload = {
-      requesterName: form.get("requesterName"),
-      phone: form.get("phone"),
-      email: form.get("email"),
-      city: form.get("city"),
-      state: form.get("state"),
-      zip: form.get("zip"),
-      description: form.get("description"),
+      requestText: String(form.get("description") ?? ""),
       peopleAffected: Number(form.get("peopleAffected") || 1),
-      preferredLanguage: form.get("preferredLanguage"),
-      notes: form.get("notes"),
+      requester: {
+        name: String(form.get("requesterName") ?? ""),
+        phone: String(form.get("phone") ?? ""),
+        email: String(form.get("email") ?? ""),
+        city: String(form.get("city") ?? ""),
+        state: String(form.get("state") ?? ""),
+        zip: String(form.get("zip") ?? ""),
+        preferredLanguage: String(form.get("preferredLanguage") ?? ""),
+      },
     };
 
     try {
-      const res = await fetch("/api/cases", {
+      const res = await fetch("/api/ai/intake", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(payload),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Failed to create case.");
-      setResult(data as Case);
+      if (!res.ok) throw new Error(data.error ?? "Failed to classify request.");
+      setResult(data as IntakeResponse);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong.");
     } finally {
@@ -118,21 +126,6 @@ export function IntakeForm() {
       </Card>
 
       <div className="space-y-4">
-        {result && (
-          <Card className="border-emerald-200 bg-emerald-50/50 dark:border-emerald-900 dark:bg-emerald-950/20">
-            <CardContent className="flex items-center justify-between gap-3 p-4">
-              <div className="flex items-center gap-2 text-sm">
-                <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-                <span>
-                  Case <strong>{result.id}</strong> created for{" "}
-                  {result.intake.requesterName}.
-                </span>
-              </div>
-              <StatusBadge status={result.status} />
-            </CardContent>
-          </Card>
-        )}
-
         {loading ? (
           <Card>
             <CardContent className="space-y-4 p-6">
@@ -141,13 +134,17 @@ export function IntakeForm() {
               <Skeleton className="h-40 w-full" />
             </CardContent>
           </Card>
-        ) : result?.triage ? (
-          <AiOutputPanel triage={result.triage} />
+        ) : result ? (
+          <IntakePanel
+            data={result.classification}
+            meta={result.meta}
+            usedFallback={result.validation.usedFallback}
+          />
         ) : (
           <EmptyState
             icon={<Inbox className="h-8 w-8" />}
-            title="AI triage result appears here"
-            description="Submit a request to see the structured classification, urgency score, safety flags, and next steps."
+            title="AI classification appears here"
+            description="Submit a request to see the structured case type, urgency score, safety flags, vulnerable-population flags, and next steps."
           />
         )}
       </div>
