@@ -5,22 +5,40 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { volunteers } from "@/lib/data/mock";
 import { LANGUAGES } from "@/lib/types";
-import { Car, Plus } from "lucide-react";
+import { assessBurnout } from "@/lib/volunteers/burnout";
+import { Car, Plus, AlertTriangle, Flame } from "lucide-react";
 
 const LANG_LABEL = Object.fromEntries(LANGUAGES.map((l) => [l.code, l.label]));
 
 export default function VolunteersPage() {
+  const atRisk = volunteers.filter(
+    (v) =>
+      assessBurnout({
+        active_assignments: v.activeAssignments,
+        max_tasks_per_day: v.maxTasksPerDay,
+        completed_tasks: v.completedTasks,
+        reliability_score: v.reliabilityScore,
+      }).level !== "ok",
+  ).length;
+
   return (
     <>
       <SectionHeading
         title="Volunteers"
-        description="Volunteer roster with skills, languages, availability, reliability, and current workload."
+        description="Volunteer roster with skills, languages, availability, reliability, current workload, and burnout protection."
         action={
           <Button size="sm">
             <Plus className="h-4 w-4" /> Add volunteer
           </Button>
         }
       />
+
+      {atRisk > 0 && (
+        <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
+          <AlertTriangle className="h-4 w-4" />
+          {atRisk} volunteer{atRisk === 1 ? "" : "s"} at or above a safe workload — review before assigning more tasks.
+        </div>
+      )}
 
       <div className="rounded-lg border border-border bg-card">
         <Table>
@@ -33,6 +51,7 @@ export default function VolunteersPage() {
               <TH>Vehicle</TH>
               <TH>Reliability</TH>
               <TH>Workload</TH>
+              <TH>Burnout</TH>
               <TH>Check</TH>
             </TR>
           </THead>
@@ -80,6 +99,21 @@ export default function VolunteersPage() {
                     {v.activeAssignments}/{v.maxTasksPerDay} today
                   </Badge>
                   <p className="mt-0.5 text-xs text-muted-foreground">{v.completedTasks} completed</p>
+                </TD>
+                <TD>
+                  {(() => {
+                    const b = assessBurnout({
+                      active_assignments: v.activeAssignments,
+                      max_tasks_per_day: v.maxTasksPerDay,
+                      completed_tasks: v.completedTasks,
+                      reliability_score: v.reliabilityScore,
+                    });
+                    if (b.level === "burnout_risk")
+                      return <Badge tone="danger"><Flame className="h-3 w-3" /> Burnout risk</Badge>;
+                    if (b.level === "warning")
+                      return <Badge tone="warning"><AlertTriangle className="h-3 w-3" /> Warning</Badge>;
+                    return <Badge tone="success">OK</Badge>;
+                  })()}
                 </TD>
                 <TD>
                   <Badge tone={v.backgroundCheck === "cleared" ? "success" : v.backgroundCheck === "pending" ? "warning" : "neutral"}>

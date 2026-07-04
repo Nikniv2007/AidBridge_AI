@@ -1,100 +1,69 @@
 # Architecture
 
-AidBridge AI is a Next.js 14 (App Router) application with a clean separation
-between **presentation** (`app/`, `components/`), **domain logic** (`lib/`), and
-an **automation layer** (`scripts/`). The design goal: every AI decision is
-structured, validated, explainable, and reversible by a human.
-
-## Layered overview
+AidBridge AI is a Next.js 14 (App Router) application split into presentation
+(`app/`, `components/`), domain logic (`lib/`), automation (`scripts/`), and data
+(`supabase/`, in-memory demo store). Design goal: every AI decision is
+structured, validated, explainable, safety-gated, and reversible by a human.
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│ app/ (routes)   marketing pages · dashboard pages · API routes │
-├─────────────────────────────────────────────────────────────┤
-│ components/     ui primitives · layout · charts · AI panels    │
-├─────────────────────────────────────────────────────────────┤
-│ lib/  ai/ (prompts, schema, demo, provider, evals)             │
-│       matching/  scoring/  safety/   ← deterministic cores     │
-│       automation/ (csv)   data/ (mock + metrics)   utils/      │
-│       supabase/ (adapter scaffolding)   types/                 │
-├─────────────────────────────────────────────────────────────┤
-│ scripts/ (Python)   parsers · dedup · reports · validation     │
-│ supabase/schema.sql   evals/   tests/                          │
-└─────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│ app/         marketing pages · dashboard (19 pages) · API routes        │
+├──────────────────────────────────────────────────────────────────────┤
+│ components/  ui primitives · layout · charts · ai panels · cases        │
+├──────────────────────────────────────────────────────────────────────┤
+│ lib/ai/      schemas (Zod) · prompts · context-builders · providers     │
+│              8 task modules · evalRunner · evalMetrics · diff            │
+│ lib/matching/ deterministic resource + volunteer scoring                │
+│ lib/safety/  emergency flags · human-review rules · output gate         │
+│ lib/forecasting/ · lib/volunteers/ (burnout) · lib/simulation/          │
+│ lib/data/    demo DB · metrics · AI output log                          │
+│ lib/supabase/ adapter scaffolding                                       │
+├──────────────────────────────────────────────────────────────────────┤
+│ scripts/ (Python)  parsers · dedupe · reports · validation · seeding    │
+│ supabase/migrations/  15 tables + RLS      evals/  fixtures + suite      │
+│ tests/  Vitest (unit · schema · safety · scoring · evals)               │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
-## Data flow: request → coordinated response
+## Frontend
 
-```
-Intake form / CSV / API
-        │
-        ▼
-runTriage()  ──►  provider dispatcher (demo | live LLM endpoint)
-        │                │
-        │                ▼
-        │         Zod schema validation  ── invalid ──► fallback to demo
-        ▼
-TriageOutput (category, urgency 0–100, safetyFlags, humanReviewRequired, …)
-        │
-        ├──► scoring/  (deterministic urgency 0–100 + band)
-        ├──► safety/   (rule-based flags; forces human review on critical)
-        │
-        ▼
-Case created (status: ai_triaged | needs_human_review)
-        │
-        ├──► matching/  matchResources()   → ranked, explained matches
-        ├──► matching/  matchVolunteers()  → ranked, explained candidates
-        ├──► ai/        runOutreach()      → localized message drafts
-        │
-        ▼
-Timeline + audit log  ──►  Reports  ──►  AI Evaluation Lab
-```
+Next.js App Router + React 18 + TypeScript + Tailwind. shadcn-style component
+library (`components/ui`), dependency-free SVG charts (`components/charts`),
+theme-aware light/dark, responsive layout, and dedicated empty/loading/error
+states. Client components call API routes; server components read the demo store
+directly.
 
-## Key design decisions
+## Backend
 
-### 1. Demo mode is a first-class citizen
-`lib/ai/demo.ts` produces schema-valid `TriageOutput` deterministically using the
-same `scoring/` and `safety/` cores the live path validates against. This means:
-- The app is fully usable with **no API keys**.
-- Demo output is **deterministic**, so it doubles as prompt-regression fixtures.
-- The live path can always **fall back** to demo without breaking the UX.
+Next.js API routes (`app/api/*`) with Zod-validated request bodies. Every AI
+route delegates to a `lib/ai` task module. Routes never throw to the client —
+they return typed JSON errors and the AI path always has a safe fallback.
 
-### 2. Safety is enforced in code, not just prompts
-`lib/safety/index.ts` is a rule-based engine. Even if a model is jailbroken or
-returns a wrong answer, a **critical** flag deterministically forces
-`humanReviewRequired`. Prompts *also* instruct the model on safety — defense in
-depth.
+## AI layer
 
-### 3. Structured output is contract-enforced
-`lib/ai/schema.ts` (Zod) validates every AI output before anything downstream
-trusts it, plus cross-field consistency checks (`urgency` ↔ `urgencyScore`,
-critical-flag ↔ human-review). The same schema powers the eval categories
-`json_validity` and `schema_compliance`.
+See [AI_LAYER.md](AI_LAYER.md) and [PROMPT_DESIGN.md](PROMPT_DESIGN.md). Eight
+structured tasks run through a single `runStructuredTask()` entry point:
+resolve provider → run demo or live → validate with Zod → fall back safely → log.
+Vendor-neutral: the live path targets any chat-completions-compatible endpoint
+via `LLM_API_URL/KEY/MODEL`; demo mode is the default and needs no keys.
 
-### 4. Matching is explainable
-`lib/matching/index.ts` returns human-readable `reasons` and `concerns` for every
-recommendation. Coordinators see *why* and can override. No opaque ranking.
+## Supabase
 
-### 5. Mock store isolates the UI from the database
-`lib/data/mock.ts` is the single data source today. Because the UI consumes
-typed getters and API routes, swapping in Supabase adapters (`lib/supabase/`)
-requires no UI changes.
+`supabase/migrations/0001_init.sql` defines 15 tables (jsonb-rich, org-scoped);
+`0002_rls.sql` enables Row-Level Security with org-scoping policies. The app runs
+on the in-memory demo store (`lib/data/db.ts`) until Supabase is configured; the
+adapter surface is stubbed in `lib/supabase/`. See
+[DATABASE_SCHEMA.md](DATABASE_SCHEMA.md).
 
-## Provider resolution
+## Automation scripts
 
-`resolveProvider()` in `lib/ai/provider.ts`:
+`scripts/*.py` (standard-library only) parse intake/roster/inventory CSVs, detect
+duplicate cases, generate daily reports, validate AI output JSON, and seed
+fictional demo data. See [WORKFLOW_AUTOMATION.md](WORKFLOW_AUTOMATION.md).
 
-1. If `AI_DEMO_MODE=true` → **demo** (default).
-2. Else if `AI_PROVIDER=live` and `LLM_API_URL` + `LLM_API_KEY` set → **live**.
-3. Else → **demo** fallback.
+## Evaluation system
 
-Every output carries `meta` (`provider`, `model`, `promptVersion`, `demoMode`,
-`latencyMs`) for auditability and eval attribution.
-
-## Token & context management
-
-- System prompts are kept tight; only necessary fields are passed to the model.
-- Few-shot examples are compact JSON strings (`lib/ai/prompts.ts`).
-- Structured JSON output avoids re-prompting: validation happens client-side of
-  the model boundary, and invalid output falls back rather than looping.
-- `promptVersion` lets eval regressions be attributed to a specific prompt rev.
+`evals/*.eval.ts` hold fixtures per task; `evals/regression-suite.eval.ts`
+aggregates them. `lib/ai/evalRunner.ts` dispatches each fixture to the right task,
+scores it, and `lib/ai/evalMetrics.ts` computes the eight headline rates surfaced
+in the AI Evaluation Lab and `POST /api/evals`. See [EVALS.md](EVALS.md).

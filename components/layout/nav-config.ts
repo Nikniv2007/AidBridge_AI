@@ -14,13 +14,18 @@ import {
   FileBarChart,
   FlaskConical,
   Settings,
+  Map,
+  TrendingDown,
+  Beaker,
+  GitCompareArrows,
+  Building2,
 } from "lucide-react";
 
 export interface NavItem {
   href: string;
   label: string;
   icon: LucideIcon;
-  group: "Operations" | "People" | "Tooling";
+  group: "Operations" | "People" | "Insights" | "Tooling";
 }
 
 export const DASHBOARD_NAV: NavItem[] = [
@@ -33,6 +38,11 @@ export const DASHBOARD_NAV: NavItem[] = [
   { href: "/dashboard/volunteers", label: "Volunteers", icon: Users, group: "People" },
   { href: "/dashboard/assignments", label: "Volunteer Assignment", icon: UserPlus, group: "People" },
   { href: "/dashboard/outreach", label: "Outreach Center", icon: MessageSquare, group: "People" },
+  { href: "/dashboard/map", label: "Map View", icon: Map, group: "Insights" },
+  { href: "/dashboard/forecasting", label: "Shortage Forecast", icon: TrendingDown, group: "Insights" },
+  { href: "/dashboard/simulation", label: "Simulation Sandbox", icon: Beaker, group: "Insights" },
+  { href: "/dashboard/ai-diff", label: "AI Diff Viewer", icon: GitCompareArrows, group: "Insights" },
+  { href: "/dashboard/partners", label: "Partner Portal", icon: Building2, group: "Insights" },
   { href: "/dashboard/documents", label: "Document Uploads", icon: FileUp, group: "Tooling" },
   { href: "/dashboard/automations", label: "Automation Logs", icon: Workflow, group: "Tooling" },
   { href: "/dashboard/reports", label: "Reports", icon: FileBarChart, group: "Tooling" },
@@ -40,4 +50,4 @@ export const DASHBOARD_NAV: NavItem[] = [
   { href: "/dashboard/settings", label: "Admin Settings", icon: Settings, group: "Tooling" },
 ];
 
-export const NAV_GROUPS: NavItem["group"][] = ["Operations", "People", "Tooling"];
+export const NAV_GROUPS: NavItem["group"][] = ["Operations", "People", "Insights", "Tooling"];

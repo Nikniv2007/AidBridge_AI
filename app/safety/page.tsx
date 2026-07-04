@@ -56,6 +56,27 @@ export default function SafetyPage() {
         </div>
       </section>
 
+      {/* Demonstration disclaimer */}
+      <section className="border-b border-border">
+        <div className="container py-6">
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+            <p className="font-semibold">Demonstration project disclaimer</p>
+            <p className="mt-1">
+              AidBridge AI is a demonstration public-interest technology project. It
+              does not replace emergency services, professional judgment, medical
+              advice, legal advice, or official disaster response systems. All
+              sample data is fictional.
+            </p>
+            <ul className="mt-2 list-disc space-y-0.5 pl-5">
+              <li>The platform does not guarantee aid.</li>
+              <li>Human review is required for critical cases.</li>
+              <li>AI outputs should be reviewed by trained staff.</li>
+              <li>Intended as a technical and public-interest software demonstration.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
       <section className="container py-16">
         <div className="grid gap-5 md:grid-cols-2">
           {PRINCIPLES.map((p) => (

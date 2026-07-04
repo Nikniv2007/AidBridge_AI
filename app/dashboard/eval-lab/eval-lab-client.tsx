@@ -8,7 +8,8 @@ import { ValidationChip } from "@/components/ai/badges";
 import { JsonViewer } from "@/components/ai/json-viewer";
 import { Progress } from "@/components/ui/progress";
 import { StatCard } from "@/components/dashboard/stat-card";
-import { humanize } from "@/lib/utils/format";
+import { humanize, formatDateTime } from "@/lib/utils/format";
+import { DEMO_EVAL_METRICS, type EvalMetric } from "@/lib/ai/evalMetrics";
 import type { EvalCaseDef, EvalRunResult } from "@/lib/ai/schemas/eval.schema";
 import { FlaskConical, Play, CheckCircle2, XCircle } from "lucide-react";
 
@@ -17,6 +18,7 @@ interface SuiteOutcome {
   passed: number;
   failed: number;
   passRate: number;
+  metrics: EvalMetric[];
 }
 
 export function EvalLabClient({ evals }: { evals: EvalCaseDef[] }) {
@@ -34,18 +36,41 @@ export function EvalLabClient({ evals }: { evals: EvalCaseDef[] }) {
     }
   }
 
+  const metrics = outcome?.metrics ?? DEMO_EVAL_METRICS;
   const rows: (EvalRunResult | EvalCaseDef)[] = outcome?.results ?? evals;
 
   return (
     <div className="space-y-6">
+      {/* Headline metric cards */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {metrics.map((m) => {
+          const good = m.goodWhenHigh ? m.value >= 90 : m.value <= 5;
+          const warn = m.goodWhenHigh ? m.value >= 75 : m.value <= 15;
+          return (
+            <StatCard
+              key={m.key}
+              label={m.label}
+              value={`${m.value}%`}
+              tone={good ? "success" : warn ? "warning" : "danger"}
+            />
+          );
+        })}
+      </div>
+      {!outcome && (
+        <p className="text-xs text-muted-foreground">
+          Showing representative demo metrics. Run the suite to compute live rates.
+        </p>
+      )}
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <FlaskConical className="h-4 w-4" />
-          {evals.length} eval cases across {new Set(evals.map((e) => e.category)).size} categories
+          {evals.length} eval fixtures across {new Set(evals.map((e) => e.category)).size} categories and{" "}
+          {new Set(evals.map((e) => e.ai_task_type)).size} tasks
         </div>
         <Button onClick={run} disabled={loading}>
           <Play className="h-4 w-4" />
-          {loading ? "Running suite…" : "Run eval suite"}
+          {loading ? "Running suite…" : "Run regression suite"}
         </Button>
       </div>
 
@@ -63,23 +88,24 @@ export function EvalLabClient({ evals }: { evals: EvalCaseDef[] }) {
           const r = row as EvalRunResult;
           const def = row as EvalCaseDef;
           const key = isResult ? r.eval_name : def.eval_name;
-          const input = String((isResult ? r.input_payload : def.input_payload).text ?? "");
+          const input = String((isResult ? r.input_payload : def.input_payload).text ?? "(structured input)");
           const open = expanded === key;
           return (
             <Card key={`${key}-${idx}`}>
               <CardContent className="p-4">
-                <button
-                  className="flex w-full items-start justify-between gap-3 text-left"
-                  onClick={() => setExpanded(open ? null : key)}
-                >
+                <button className="flex w-full items-start justify-between gap-3 text-left" onClick={() => setExpanded(open ? null : key)}>
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-medium">{key}</span>
                       <Badge tone="neutral">{humanize((isResult ? r.category : def.category) as string)}</Badge>
                       <Badge tone="info">{humanize((isResult ? r.ai_task_type : def.ai_task_type) as string)}</Badge>
                       {isResult && <ValidationChip pass={r.passed} />}
+                      {isResult && <Badge tone="purple">{r.prompt_version}</Badge>}
                     </div>
                     <p className="mt-1 line-clamp-1 text-sm text-muted-foreground">“{input}”</p>
+                    {isResult && (
+                      <p className="mt-0.5 text-xs text-muted-foreground">Ran {formatDateTime(r.created_at)}</p>
+                    )}
                   </div>
                   {isResult && (
                     <div className="flex items-center gap-2">

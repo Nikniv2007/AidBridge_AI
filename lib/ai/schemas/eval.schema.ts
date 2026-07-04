@@ -36,6 +36,7 @@ export const evalResultSchema = z.object({
   eval_name: z.string(),
   ai_task_type: aiTaskTypeSchema,
   category: evalCaseSchema.shape.category,
+  prompt_version: z.string().default("n/a"),
   input_payload: z.record(z.unknown()),
   expected_payload: z.record(z.unknown()),
   actual_payload: z.record(z.unknown()),
