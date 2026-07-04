@@ -1,0 +1,9 @@
+# AidBridge AI — Python automation layer
+# The core scripts use ONLY the standard library so they run anywhere with no
+# install step. Optional extras are listed but not required for demo usage.
+
+# (stdlib only for csv, json, argparse, difflib, datetime — no install needed)
+
+# Optional, for future PDF/Excel parsing (documented TODOs):
+# pdfplumber>=0.11
+# openpyxl>=3.1
